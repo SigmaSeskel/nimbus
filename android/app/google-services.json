@@ -1,0 +1,46 @@
+{
+  "project_info": {
+    "project_number": "622647875503",
+    "project_id": "nimbus-ff153",
+    "storage_bucket": "nimbus-ff153.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:622647875503:android:92d6fc020c974ef306815a",
+        "android_client_info": {
+          "package_name": "com.example.nimbus_new2"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "622647875503-bc5ckb1anhtlopsj27qkckp4aqmg7mnp.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyATNNJgLjmxgnlNCUwHa38ofPpplqxvxJQ"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "622647875503-bc5ckb1anhtlopsj27qkckp4aqmg7mnp.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "622647875503-jns0m69rstj2prhkfakn80a359e4pqou.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.nimbusNew2"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
