@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:nimbus/services/notification_service.dart';
 import 'book_detail_screen.dart';
 import 'profile_screen.dart';
 import 'cart_screen.dart';
 import 'search_screen.dart';
+import 'notifications_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({Key? key}) : super(key: key);
@@ -14,6 +16,7 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   int _selectedIndex = 0;
   String _selectedCategory = 'All';
+  final NotificationService _notificationService = NotificationService();
 
   // Sample book data
   final List<Map<String, dynamic>> _books = [
@@ -67,7 +70,7 @@ class _HomeScreenState extends State<HomeScreen> {
     },
   ];
 
-  List<String> _categories = [
+  final List<String> _categories = [
     'All',
     'Fiction',
     'Non-Fiction',
@@ -118,7 +121,7 @@ class _HomeScreenState extends State<HomeScreen> {
     return SafeArea(
       child: CustomScrollView(
         slivers: [
-          // App Bar
+          // App Bar with Notifications
           SliverAppBar(
             floating: true,
             backgroundColor: Colors.white,
@@ -134,6 +137,54 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ),
             actions: [
+              // Notifications with badge
+              StreamBuilder<int>(
+                stream: _notificationService.getUnreadCount(),
+                builder: (context, snapshot) {
+                  final unreadCount = snapshot.data ?? 0;
+                  
+                  return Stack(
+                    children: [
+                      IconButton(
+                        icon: const Icon(Icons.notifications_outlined, color: Colors.black),
+                        onPressed: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => const NotificationsScreen(),
+                            ),
+                          );
+                        },
+                      ),
+                      if (unreadCount > 0)
+                        Positioned(
+                          right: 8,
+                          top: 8,
+                          child: Container(
+                            padding: const EdgeInsets.all(4),
+                            decoration: const BoxDecoration(
+                              color: Colors.red,
+                              shape: BoxShape.circle,
+                            ),
+                            constraints: const BoxConstraints(
+                              minWidth: 18,
+                              minHeight: 18,
+                            ),
+                            child: Text(
+                              unreadCount > 99 ? '99+' : unreadCount.toString(),
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                              ),
+                              textAlign: TextAlign.center,
+                            ),
+                          ),
+                        ),
+                    ],
+                  );
+                },
+              ),
               IconButton(
                 icon: const Icon(Icons.shopping_cart_outlined, color: Colors.black),
                 onPressed: () {
@@ -227,16 +278,41 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                   ),
                   const SizedBox(height: 16),
-                  ElevatedButton(
-                    onPressed: () {},
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.white,
-                      foregroundColor: const Color(0xFF64B5F6),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
+                  Row(
+                    children: [
+                      ElevatedButton(
+                        onPressed: () {},
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.white,
+                          foregroundColor: const Color(0xFF64B5F6),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                        ),
+                        child: const Text('Explore Now'),
                       ),
-                    ),
-                    child: const Text('Explore Now'),
+                      const SizedBox(width: 12),
+                      // Test notification button (for development)
+                      OutlinedButton(
+                        onPressed: () {
+                          _notificationService.createSampleNotifications();
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Sample notifications created!'),
+                              duration: Duration(seconds: 2),
+                            ),
+                          );
+                        },
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: Colors.white,
+                          side: const BorderSide(color: Colors.white),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                        ),
+                        child: const Text('Test Notifications'),
+                      ),
+                    ],
                   ),
                 ],
               ),
@@ -244,10 +320,10 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
 
           // Categories Header
-          SliverToBoxAdapter(
+          const SliverToBoxAdapter(
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 24, 16, 12),
-              child: const Text(
+              padding: EdgeInsets.fromLTRB(16, 24, 16, 12),
+              child: Text(
                 'Categories',
                 style: TextStyle(
                   fontSize: 20,

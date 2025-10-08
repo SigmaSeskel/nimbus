@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:nimbus/screens/checkout_screen.dart';
 
 class CartScreen extends StatefulWidget {
   const CartScreen({Key? key}) : super(key: key);
@@ -129,92 +130,14 @@ class _CartScreenState extends State<CartScreen> {
       return;
     }
 
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Text(
-          'Checkout',
-          style: TextStyle(fontWeight: FontWeight.bold),
+    // Navigate to checkout screen
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => CheckoutScreen(
+          cartItems: cartItems,
+          subtotal: _calculateSubtotal(),
         ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              Icons.shopping_bag_outlined,
-              size: 64,
-              color: Colors.green[400],
-            ),
-            const SizedBox(height: 16),
-            Text(
-              '${cartItems.length} item${cartItems.length > 1 ? 's' : ''}',
-              style: const TextStyle(fontSize: 16),
-            ),
-            const SizedBox(height: 16),
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: const Color(0xFF64B5F6).withOpacity(0.1),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Column(
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text('Total:'),
-                      Text(
-                        '\$${_calculateTotal().toStringAsFixed(2)}',
-                        style: const TextStyle(
-                          fontSize: 24,
-                          fontWeight: FontWeight.bold,
-                          color: Color(0xFF64B5F6),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              Navigator.pop(context);
-              setState(() {
-                cartItems.clear();
-              });
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Row(
-                    children: const [
-                      Icon(Icons.check_circle, color: Colors.white),
-                      SizedBox(width: 12),
-                      Expanded(
-                        child: Text('Order placed successfully! Books added to your library.'),
-                      ),
-                    ],
-                  ),
-                  backgroundColor: Colors.green,
-                  duration: const Duration(seconds: 3),
-                  behavior: SnackBarBehavior.floating,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                ),
-              );
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.green,
-            ),
-            child: const Text('Confirm Order'),
-          ),
-        ],
       ),
     );
   }
@@ -491,7 +414,7 @@ class _CartScreenState extends State<CartScreen> {
                   ),
                 ),
                 Text(
-                  '\$${subtotal.toStringAsFixed(2)}',
+                  '\${subtotal.toStringAsFixed(2)}',
                   style: const TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.w600,
@@ -514,7 +437,7 @@ class _CartScreenState extends State<CartScreen> {
                   ),
                 ),
                 Text(
-                  '\$${tax.toStringAsFixed(2)}',
+                  '\${tax.toStringAsFixed(2)}',
                   style: const TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.w600,
@@ -542,7 +465,7 @@ class _CartScreenState extends State<CartScreen> {
                   ),
                 ),
                 Text(
-                  '\$${total.toStringAsFixed(2)}',
+                  '\${total.toStringAsFixed(2)}',
                   style: const TextStyle(
                     fontSize: 24,
                     fontWeight: FontWeight.bold,

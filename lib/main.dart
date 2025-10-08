@@ -1,17 +1,20 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'firebase_options.dart';
+
+import 'package:nimbus/screens/splash_screen.dart';
 import 'package:nimbus/screens/home_screen.dart';
 import 'package:nimbus/screens/auth/login_screen.dart';
 import 'package:nimbus/screens/auth/onboarding_screen.dart';
 
 void main() async {
-  // Must add this before Firebase initialization
   WidgetsFlutterBinding.ensureInitialized();
-  
-  // Initialize Firebase
-  await Firebase.initializeApp();
-  
+
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
+
   runApp(const NimbusApp());
 }
 
@@ -42,17 +45,19 @@ class NimbusApp extends StatelessWidget {
         useMaterial3: true,
         fontFamily: 'Roboto',
       ),
-      home: const AuthWrapper(), // Check if user is logged in
+      home: const SplashScreen(), // Start with splash
       routes: {
+        '/splash': (context) => const SplashScreen(),
         '/onboarding': (context) => const OnboardingScreen(),
         '/login': (context) => const LoginScreen(),
         '/home': (context) => const HomeScreen(),
+        '/authWrapper': (context) => const AuthWrapper(),
       },
     );
   }
 }
 
-// Auth Wrapper to check if user is logged in
+/// Auth Wrapper to check login state after splash
 class AuthWrapper extends StatelessWidget {
   const AuthWrapper({Key? key}) : super(key: key);
 
@@ -61,7 +66,6 @@ class AuthWrapper extends StatelessWidget {
     return StreamBuilder<User?>(
       stream: FirebaseAuth.instance.authStateChanges(),
       builder: (context, snapshot) {
-        // Show loading while checking auth state
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Scaffold(
             backgroundColor: Colors.white,
@@ -73,12 +77,10 @@ class AuthWrapper extends StatelessWidget {
           );
         }
 
-        // If user is logged in, go to home
         if (snapshot.hasData) {
           return const HomeScreen();
         }
 
-        // Otherwise, show onboarding
         return const OnboardingScreen();
       },
     );

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:nimbus/services/auth_service.dart';
 
 class SignUpScreen extends StatefulWidget {
   const SignUpScreen({Key? key}) : super(key: key);
@@ -13,6 +14,8 @@ class _SignUpScreenState extends State<SignUpScreen> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
+  final _authService = AuthService(); // ADD THIS LINE
+  
   bool _obscurePassword = true;
   bool _obscureConfirmPassword = true;
   bool _agreeToTerms = false;
@@ -28,43 +31,87 @@ class _SignUpScreenState extends State<SignUpScreen> {
   }
 
   Future<void> _signUp() async {
-    if (!_formKey.currentState!.validate()) return;
+    print('🟢🟢🟢 ========================================');
+    print('🟢 SIGNUP BUTTON WAS PRESSED!');
+    print('🟢🟢🟢 ========================================');
+    
+    if (!_formKey.currentState!.validate()) {
+      print('❌ Form validation failed');
+      return;
+    }
 
     if (!_agreeToTerms) {
+      print('❌ User did not agree to terms');
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Please agree to the Terms and Conditions'),
           backgroundColor: Colors.red,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.all(Radius.circular(12)),
+          ),
         ),
       );
       return;
     }
 
     setState(() => _isLoading = true);
+    print('🔵 About to call AuthService.signUpWithEmail...');
 
-    // Simulate sign up process
-    await Future.delayed(const Duration(seconds: 2));
+    try {
+      await _authService.signUpWithEmail(
+        email: _emailController.text.trim(),
+        password: _passwordController.text,
+        name: _nameController.text.trim(),
+      );
 
-    if (!mounted) return;
+      if (!mounted) return;
 
-    setState(() => _isLoading = false);
+      // Navigate to home (handled by AuthWrapper automatically)
+      Navigator.pushReplacementNamed(context, '/home');
 
-    // Navigate to home
-    Navigator.pushReplacementNamed(context, '/home');
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Row(
-          children: [
-            Icon(Icons.check_circle, color: Colors.white),
-            SizedBox(width: 12),
-            Text('Account created successfully!'),
-          ],
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Row(
+            children: [
+              Icon(Icons.check_circle, color: Colors.white),
+              SizedBox(width: 12),
+              Text('Account created successfully!'),
+            ],
+          ),
+          backgroundColor: Colors.green,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.all(Radius.circular(12)),
+          ),
         ),
-        backgroundColor: Colors.green,
-        behavior: SnackBarBehavior.floating,
-      ),
-    );
+      );
+    } catch (e) {
+      print('❌ Signup failed with error: $e');
+      
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              const Icon(Icons.error_outline, color: Colors.white),
+              const SizedBox(width: 12),
+              Expanded(child: Text(e.toString())),
+            ],
+          ),
+          backgroundColor: Colors.red,
+          behavior: SnackBarBehavior.floating,
+          shape: const RoundedRectangleBorder(
+            borderRadius: BorderRadius.all(Radius.circular(12)),
+          ),
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
   }
 
   @override

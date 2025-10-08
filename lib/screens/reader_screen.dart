@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:syncfusion_flutter_pdfviewer/pdfviewer.dart';
+import 'package:flutter_pdfview/flutter_pdfview.dart';
+import 'package:http/http.dart' as http;
+import 'package:path_provider/path_provider.dart';
+import 'dart:io';
 
 class ReaderScreen extends StatefulWidget {
   final String bookTitle;
@@ -16,22 +19,44 @@ class ReaderScreen extends StatefulWidget {
 }
 
 class _ReaderScreenState extends State<ReaderScreen> {
-  final PdfViewerController _pdfViewerController = PdfViewerController();
+  String? localPath;
+  bool isLoading = true;
+  bool hasError = false;
   bool _isBookmarked = false;
   bool _showControls = true;
-  int _currentPage = 1;
+  int _currentPage = 0;
   int _totalPages = 0;
-  double _currentZoom = 1.0;
   bool _isDarkMode = false;
+  PDFViewController? _pdfViewController;
 
   @override
   void initState() {
     super.initState();
-    _pdfViewerController.addListener(() {
+    _downloadAndSavePdf();
+  }
+
+  Future<void> _downloadAndSavePdf() async {
+    try {
       setState(() {
-        _currentPage = _pdfViewerController.pageNumber;
+        isLoading = true;
+        hasError = false;
       });
-    });
+
+      final response = await http.get(Uri.parse(widget.pdfUrl));
+      final dir = await getTemporaryDirectory();
+      final file = File('${dir.path}/temp.pdf');
+      await file.writeAsBytes(response.bodyBytes);
+
+      setState(() {
+        localPath = file.path;
+        isLoading = false;
+      });
+    } catch (e) {
+      setState(() {
+        hasError = true;
+        isLoading = false;
+      });
+    }
   }
 
   void _toggleControls() {
@@ -55,7 +80,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
             const SizedBox(width: 12),
             Text(
               _isBookmarked
-                  ? 'Page $_currentPage bookmarked'
+                  ? 'Page ${_currentPage + 1} bookmarked'
                   : 'Bookmark removed',
             ),
           ],
@@ -126,7 +151,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
                   color: Color(0xFF64B5F6),
                 ),
                 onTap: () {
-                  _pdfViewerController.jumpToPage(page);
+                  _pdfViewController?.setPage(page - 1);
                   Navigator.pop(context);
                 },
               );
@@ -182,91 +207,6 @@ class _ReaderScreenState extends State<ReaderScreen> {
               onChanged: (value) {
                 _toggleDarkMode();
                 Navigator.pop(context);
-              },
-            ),
-            const Divider(),
-            ListTile(
-              leading: Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFE3F2FD),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: const Icon(
-                  Icons.text_fields,
-                  color: Color(0xFF64B5F6),
-                  size: 20,
-                ),
-              ),
-              title: const Text(
-                'Font Size',
-                style: TextStyle(
-                  fontWeight: FontWeight.w600,
-                  color: Color(0xFF2C3E50),
-                ),
-              ),
-              subtitle: Text(
-                'Medium',
-                style: TextStyle(color: Colors.grey[600]),
-              ),
-              trailing: const Icon(
-                Icons.arrow_forward_ios,
-                size: 16,
-                color: Color(0xFF64B5F6),
-              ),
-              onTap: () {
-                Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: const Text('Font size adjustment coming soon'),
-                    behavior: SnackBarBehavior.floating,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                  ),
-                );
-              },
-            ),
-            ListTile(
-              leading: Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFE3F2FD),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: const Icon(
-                  Icons.brightness_6,
-                  color: Color(0xFF64B5F6),
-                  size: 20,
-                ),
-              ),
-              title: const Text(
-                'Brightness',
-                style: TextStyle(
-                  fontWeight: FontWeight.w600,
-                  color: Color(0xFF2C3E50),
-                ),
-              ),
-              subtitle: Text(
-                'Auto',
-                style: TextStyle(color: Colors.grey[600]),
-              ),
-              trailing: const Icon(
-                Icons.arrow_forward_ios,
-                size: 16,
-                color: Color(0xFF64B5F6),
-              ),
-              onTap: () {
-                Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: const Text('Brightness adjustment coming soon'),
-                    behavior: SnackBarBehavior.floating,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                  ),
-                );
               },
             ),
           ],
@@ -334,7 +274,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
               onPressed: () {
                 final page = int.tryParse(controller.text);
                 if (page != null && page > 0 && page <= _totalPages) {
-                  _pdfViewerController.jumpToPage(page);
+                  _pdfViewController?.setPage(page - 1);
                   Navigator.pop(context);
                 } else {
                   ScaffoldMessenger.of(context).showSnackBar(
@@ -381,24 +321,92 @@ class _ReaderScreenState extends State<ReaderScreen> {
       backgroundColor: _isDarkMode ? const Color(0xFF1A1A1A) : const Color(0xFFF5F5F5),
       body: Stack(
         children: [
-          // PDF Viewer
-          GestureDetector(
-            onTap: _toggleControls,
-            child: SfPdfViewer.network(
-              widget.pdfUrl,
-              controller: _pdfViewerController,
-              onDocumentLoaded: (details) {
-                setState(() {
-                  _totalPages = details.document.pages.count;
-                });
-              },
-              onPageChanged: (details) {
-                setState(() {
-                  _currentPage = details.newPageNumber;
-                });
-              },
+          // PDF Viewer or Loading/Error State
+          if (isLoading)
+            const Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  CircularProgressIndicator(
+                    color: Color(0xFF64B5F6),
+                  ),
+                  SizedBox(height: 16),
+                  Text(
+                    'Loading PDF...',
+                    style: TextStyle(
+                      fontSize: 16,
+                      color: Color(0xFF64B5F6),
+                    ),
+                  ),
+                ],
+              ),
+            )
+          else if (hasError)
+            Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(
+                    Icons.error_outline,
+                    size: 64,
+                    color: Colors.red,
+                  ),
+                  const SizedBox(height: 16),
+                  const Text(
+                    'Failed to load PDF',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 8),
+                  const Text('Please check your internet connection'),
+                  const SizedBox(height: 24),
+                  ElevatedButton.icon(
+                    onPressed: _downloadAndSavePdf,
+                    icon: const Icon(Icons.refresh),
+                    label: const Text('Retry'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF64B5F6),
+                      foregroundColor: Colors.white,
+                    ),
+                  ),
+                ],
+              ),
+            )
+          else if (localPath != null)
+            GestureDetector(
+              onTap: _toggleControls,
+              child: PDFView(
+                filePath: localPath!,
+                enableSwipe: true,
+                swipeHorizontal: false,
+                autoSpacing: true,
+                pageFling: true,
+                pageSnap: true,
+                defaultPage: _currentPage,
+                fitPolicy: FitPolicy.BOTH,
+                preventLinkNavigation: false,
+                onRender: (pages) {
+                  setState(() {
+                    _totalPages = pages ?? 0;
+                  });
+                },
+                onError: (error) {
+                  setState(() {
+                    hasError = true;
+                  });
+                },
+                onPageError: (page, error) {
+                  print('$page: ${error.toString()}');
+                },
+                onViewCreated: (PDFViewController pdfViewController) {
+                  _pdfViewController = pdfViewController;
+                },
+                onPageChanged: (int? page, int? total) {
+                  setState(() {
+                    _currentPage = page ?? 0;
+                  });
+                },
+              ),
             ),
-          ),
 
           // Top App Bar
           if (_showControls)
@@ -478,7 +486,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
             ),
 
           // Bottom Controls
-          if (_showControls)
+          if (_showControls && !isLoading && !hasError)
             Positioned(
               bottom: 0,
               left: 0,
@@ -510,7 +518,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
                                 borderRadius: BorderRadius.circular(6),
                               ),
                               child: Text(
-                                '$_currentPage',
+                                '${_currentPage + 1}',
                                 style: const TextStyle(
                                   color: Colors.white,
                                   fontWeight: FontWeight.bold,
@@ -531,12 +539,12 @@ class _ReaderScreenState extends State<ReaderScreen> {
                                 ),
                                 child: Slider(
                                   value: _currentPage.toDouble(),
-                                  min: 1,
-                                  max: _totalPages > 0 ? _totalPages.toDouble() : 1,
+                                  min: 0,
+                                  max: _totalPages > 0 ? (_totalPages - 1).toDouble() : 0,
                                   activeColor: const Color(0xFF64B5F6),
                                   inactiveColor: Colors.white.withOpacity(0.3),
                                   onChanged: (value) {
-                                    _pdfViewerController.jumpToPage(value.toInt());
+                                    _pdfViewController?.setPage(value.toInt());
                                   },
                                 ),
                               ),
@@ -574,7 +582,11 @@ class _ReaderScreenState extends State<ReaderScreen> {
                             _buildControlButton(
                               Icons.chevron_left,
                               'Previous',
-                              () => _pdfViewerController.previousPage(),
+                              () {
+                                if (_currentPage > 0) {
+                                  _pdfViewController?.setPage(_currentPage - 1);
+                                }
+                              },
                             ),
                             _buildControlButton(
                               Icons.format_list_numbered,
@@ -584,7 +596,11 @@ class _ReaderScreenState extends State<ReaderScreen> {
                             _buildControlButton(
                               Icons.chevron_right,
                               'Next',
-                              () => _pdfViewerController.nextPage(),
+                              () {
+                                if (_currentPage < _totalPages - 1) {
+                                  _pdfViewController?.setPage(_currentPage + 1);
+                                }
+                              },
                             ),
                             _buildControlButton(
                               _isDarkMode ? Icons.light_mode : Icons.dark_mode,
@@ -601,7 +617,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
             ),
 
           // Page Number Indicator (always visible)
-          if (!_showControls)
+          if (!_showControls && !isLoading && !hasError)
             Positioned(
               bottom: 20,
               right: 20,
@@ -619,7 +635,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
                   ],
                 ),
                 child: Text(
-                  '$_currentPage / $_totalPages',
+                  '${_currentPage + 1} / $_totalPages',
                   style: const TextStyle(
                     color: Colors.white,
                     fontWeight: FontWeight.bold,
@@ -667,11 +683,5 @@ class _ReaderScreenState extends State<ReaderScreen> {
         ),
       ),
     );
-  }
-
-  @override
-  void dispose() {
-    _pdfViewerController.dispose();
-    super.dispose();
   }
 }
