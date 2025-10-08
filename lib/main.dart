@@ -1,12 +1,19 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:provider/provider.dart'; // 🔹 Added
 import 'firebase_options.dart';
 
+// Screens
 import 'package:nimbus/screens/splash_screen.dart';
 import 'package:nimbus/screens/home_screen.dart';
 import 'package:nimbus/screens/auth/login_screen.dart';
 import 'package:nimbus/screens/auth/onboarding_screen.dart';
+
+// 🔹 Added: Theme + Notifications
+import 'package:nimbus/theme/theme_notifier.dart';
+import 'package:nimbus/notifications/push.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -15,7 +22,22 @@ void main() async {
     options: DefaultFirebaseOptions.currentPlatform,
   );
 
-  runApp(const NimbusApp());
+  // Enable Firestore offline persistence
+  FirebaseFirestore.instance.settings = const Settings(
+    persistenceEnabled: true,
+    cacheSizeBytes: Settings.CACHE_SIZE_UNLIMITED,
+  );
+
+  // 🔹 Initialize push notifications (before runApp)
+  await initPush();
+
+  // 🔹 Wrap with Provider for Theme switching
+  runApp(
+    ChangeNotifierProvider(
+      create: (_) => ThemeNotifier(),
+      child: const NimbusApp(),
+    ),
+  );
 }
 
 class NimbusApp extends StatelessWidget {
@@ -23,9 +45,17 @@ class NimbusApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // 🔹 Watch the current theme
+    final themeNotifier = context.watch<ThemeNotifier>();
+
     return MaterialApp(
       title: 'Nimbus - E-Book Store',
       debugShowCheckedModeBanner: false,
+
+      // 🔹 Apply theme mode
+      themeMode: themeNotifier.mode,
+
+      // 🔹 Light theme
       theme: ThemeData(
         primarySwatch: Colors.blue,
         primaryColor: const Color(0xFF64B5F6),
@@ -44,8 +74,55 @@ class NimbusApp extends StatelessWidget {
         ),
         useMaterial3: true,
         fontFamily: 'Roboto',
+        cardTheme: CardThemeData(
+          elevation: 2,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+        ),
+        inputDecorationTheme: InputDecorationTheme(
+          filled: true,
+          fillColor: const Color(0xFFE3F2FD),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide.none,
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: const BorderSide(
+              color: Color(0xFF64B5F6),
+              width: 2,
+            ),
+          ),
+        ),
+        elevatedButtonTheme: ElevatedButtonThemeData(
+          style: ElevatedButton.styleFrom(
+            elevation: 0,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+          ),
+        ),
+        textButtonTheme: TextButtonThemeData(
+          style: TextButton.styleFrom(
+            foregroundColor: const Color(0xFF64B5F6),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(8),
+            ),
+          ),
+        ),
       ),
-      home: const SplashScreen(), // Start with splash
+
+      // 🔹 Dark theme
+      darkTheme: ThemeData(
+        brightness: Brightness.dark,
+        colorSchemeSeed: const Color(0xFF64B5F6),
+        useMaterial3: true,
+        fontFamily: 'Roboto',
+      ),
+
+      home: const SplashScreen(),
       routes: {
         '/splash': (context) => const SplashScreen(),
         '/onboarding': (context) => const OnboardingScreen(),
@@ -80,7 +157,6 @@ class AuthWrapper extends StatelessWidget {
         if (snapshot.hasData) {
           return const HomeScreen();
         }
-
         return const OnboardingScreen();
       },
     );

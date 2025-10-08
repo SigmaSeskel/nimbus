@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:nimbus/services/profile_service.dart';
+import 'package:nimbus/services/firestore_service.dart';
 import 'package:nimbus/services/auth_service.dart';
 import 'package:nimbus/screens/settings_screen.dart';
 import 'package:nimbus/screens/wishlist_screen.dart';
 import 'package:nimbus/screens/notifications_screen.dart';
 import 'package:nimbus/screens/order_history_screen.dart';
+import 'package:nimbus/screens/cart_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({Key? key}) : super(key: key);
@@ -15,10 +16,9 @@ class ProfileScreen extends StatefulWidget {
 }
 
 class _ProfileScreenState extends State<ProfileScreen> {
-  final ProfileService _profileService = ProfileService();
+  final FirestoreService _firestoreService = FirestoreService();
   final AuthService _authService = AuthService();
   
-  Map<String, dynamic>? _userProfile;
   Map<String, int> _stats = {'books': 0, 'read': 0, 'wishlist': 0};
   bool _isLoading = true;
 
@@ -32,59 +32,32 @@ class _ProfileScreenState extends State<ProfileScreen> {
     setState(() => _isLoading = true);
     
     try {
-      // Load profile first
-      final profile = await _profileService.getUserProfile();
+      // Load stats from Firestore
+      final wishlistSnapshot = await _firestoreService.streamWishlist().first;
+      final librarySnapshot = await _firestoreService.streamLibrary().first;
       
       setState(() {
-        _userProfile = profile;
+        _stats = {
+          'books': librarySnapshot.length,
+          'read': librarySnapshot.length, // You can track this separately
+          'wishlist': wishlistSnapshot.length,
+        };
+        _isLoading = false;
       });
-      
-      // Load stats separately (don't block on errors)
-      try {
-        final stats = await _profileService.getProfileStats();
-        setState(() {
-          _stats = stats;
-        });
-      } catch (statsError) {
-        print('⚠️ Warning: Could not load stats: $statsError');
-        // Keep default stats (0, 0, 0)
-      }
-      
-      setState(() => _isLoading = false);
     } catch (e) {
       print('❌ Error loading profile: $e');
       setState(() => _isLoading = false);
-      
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error loading profile. Please try again.'),
-            backgroundColor: Colors.red,
-            action: SnackBarAction(
-              label: 'Retry',
-              textColor: Colors.white,
-              onPressed: _loadProfileData,
-            ),
-          ),
-        );
-      }
     }
   }
 
   String get userName {
-    final name = _userProfile?['name'] ?? 
-                 _authService.currentUser?.displayName ?? 
+    final name = _authService.currentUser?.displayName ?? 
                  _authService.currentUser?.email?.split('@')[0] ?? 
                  'User';
     return name.isNotEmpty ? name : 'User';
   }
   
-  String get userEmail => _userProfile?['email'] ?? 
-                          _authService.currentUser?.email ?? 
-                          'No email';
-  
-  String get userPhone => _userProfile?['phone'] ?? 'Not set';
-  String get userBio => _userProfile?['bio'] ?? 'Book lover 📚';
+  String get userEmail => _authService.currentUser?.email ?? 'No email';
   
   String get userInitial {
     try {
@@ -92,7 +65,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
       if (name.isEmpty) return 'U';
       return name[0].toUpperCase();
     } catch (e) {
-      print('Error getting initial: $e');
       return 'U';
     }
   }
@@ -113,8 +85,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 slivers: [
                   _buildAppBar(),
                   _buildStatsCards(),
-                  _buildAccountSection(),
                   _buildLibrarySection(),
+                  _buildAccountSection(),
                   _buildSettingsSection(),
                   _buildSupportSection(),
                   _buildLogoutButton(),
@@ -166,19 +138,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   child: CircleAvatar(
                     radius: 60,
                     backgroundColor: Colors.white,
-                    backgroundImage: (_userProfile != null && _userProfile!['photoUrl'] != null)
-                        ? NetworkImage(_userProfile!['photoUrl'])
-                        : null,
-                    child: (_userProfile == null || _userProfile!['photoUrl'] == null)
-                        ? Text(
-                            userInitial,
-                            style: const TextStyle(
-                              fontSize: 48,
-                              fontWeight: FontWeight.bold,
-                              color: Color(0xFF64B5F6),
-                            ),
-                          )
-                        : null,
+                    child: Text(
+                      userInitial,
+                      style: const TextStyle(
+                        fontSize: 48,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF64B5F6),
+                      ),
+                    ),
                   ),
                 ),
                 const SizedBox(height: 16),
@@ -298,6 +265,80 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
+  Widget _buildLibrarySection() {
+    return SliverToBoxAdapter(
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'My Library',
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 12),
+            _buildMenuCard([
+              _buildMenuItem(
+                Icons.library_books_outlined,
+                'My Books',
+                '${_stats['books']} books in collection',
+                () {
+                  // Navigate to Library tab on home screen
+                  Navigator.pop(context);
+                },
+              ),
+              const Divider(height: 1),
+              _buildMenuItem(
+                Icons.favorite_border,
+                'Wishlist',
+                '${_stats['wishlist']} books in wishlist',
+                () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const WishlistScreen(),
+                    ),
+                  );
+                },
+              ),
+              const Divider(height: 1),
+              _buildMenuItem(
+                Icons.shopping_cart_outlined,
+                'My Cart',
+                'View items in cart',
+                () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const CartScreen(),
+                    ),
+                  );
+                },
+              ),
+              const Divider(height: 1),
+              _buildMenuItem(
+                Icons.history,
+                'Order History',
+                'View past purchases',
+                () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const OrderHistoryScreen(),
+                    ),
+                  );
+                },
+              ),
+            ]),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildAccountSection() {
     return SliverToBoxAdapter(
       child: Padding(
@@ -322,20 +363,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ),
               const Divider(height: 1),
               _buildMenuItem(
-                Icons.phone_outlined,
-                'Phone Number',
-                userPhone,
-                _showPhoneDialog,
-              ),
-              const Divider(height: 1),
-              _buildMenuItem(
-                Icons.email_outlined,
-                'Email Address',
-                userEmail,
-                _showEmailDialog,
-              ),
-              const Divider(height: 1),
-              _buildMenuItem(
                 Icons.lock_outline,
                 'Change Password',
                 'Update your password',
@@ -351,70 +378,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     context,
                     MaterialPageRoute(
                       builder: (context) => const NotificationsScreen(),
-                    ),
-                  );
-                },
-              ),
-            ]),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildLibrarySection() {
-    return SliverToBoxAdapter(
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'My Library',
-              style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const SizedBox(height: 12),
-            _buildMenuCard([
-              _buildMenuItem(
-                Icons.library_books_outlined,
-                'My Books',
-                '${_stats['books']} books in collection',
-                () => _showComingSoon(context),
-              ),
-              const Divider(height: 1),
-              _buildMenuItem(
-                Icons.favorite_border,
-                'Wishlist',
-                '${_stats['wishlist']} books in wishlist',
-                () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => const WishlistScreen(),
-                    ),
-                  );
-                },
-              ),
-              const Divider(height: 1),
-              _buildMenuItem(
-                Icons.shopping_cart_outlined,
-                'My Cart',
-                'View items in cart',
-                () => Navigator.pop(context),
-              ),
-              const Divider(height: 1),
-              _buildMenuItem(
-                Icons.history,
-                'Order History',
-                'View past purchases',
-                () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => const OrderHistoryScreen(),
                     ),
                   );
                 },
@@ -454,13 +417,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     ),
                   );
                 },
-              ),
-              const Divider(height: 1),
-              _buildMenuItem(
-                Icons.dark_mode_outlined,
-                'Dark Mode',
-                'Switch to dark theme',
-                () => _toggleDarkMode(),
               ),
               const Divider(height: 1),
               _buildMenuItem(
@@ -600,7 +556,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   void _showEditProfileDialog() {
     final nameController = TextEditingController(text: userName);
-    final bioController = TextEditingController(text: userBio);
     
     showDialog(
       context: context,
@@ -613,35 +568,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
             fontSize: 22,
           ),
         ),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: nameController,
-                decoration: InputDecoration(
-                  labelText: 'Name',
-                  hintText: 'Enter your name',
-                  prefixIcon: const Icon(Icons.person, color: Color(0xFF64B5F6)),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 16),
-              TextField(
-                controller: bioController,
-                decoration: InputDecoration(
-                  labelText: 'Bio',
-                  hintText: 'Tell us about yourself',
-                  prefixIcon: const Icon(Icons.edit, color: Color(0xFF64B5F6)),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                ),
-                maxLines: 3,
-              ),
-            ],
+        content: TextField(
+          controller: nameController,
+          decoration: InputDecoration(
+            labelText: 'Display Name',
+            hintText: 'Enter your name',
+            prefixIcon: const Icon(Icons.person, color: Color(0xFF64B5F6)),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
           ),
         ),
         actions: [
@@ -652,14 +587,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ElevatedButton(
             onPressed: () async {
               try {
-                await _profileService.updateProfile(
-                  name: nameController.text,
-                  bio: bioController.text,
-                );
+                await _authService.updateUserProfile(name: nameController.text);
                 
                 if (!mounted) return;
                 Navigator.pop(context);
-                _loadProfileData();
+                setState(() {}); // Refresh UI
                 
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(
@@ -670,7 +602,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               } catch (e) {
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
-                    content: Text(e.toString()),
+                    content: Text('Error: ${e.toString()}'),
                     backgroundColor: Colors.red,
                   ),
                 );
@@ -687,274 +619,158 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  void _showPhoneDialog() {
-    final phoneController = TextEditingController(text: userPhone == 'Not set' ? '' : userPhone);
-    
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Text('Update Phone Number'),
-        content: TextField(
-          controller: phoneController,
-          keyboardType: TextInputType.phone,
-          decoration: InputDecoration(
-            labelText: 'Phone Number',
-            hintText: '+66 123 456 789',
-            prefixIcon: const Icon(Icons.phone, color: Color(0xFF64B5F6)),
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-            ),
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () async {
-              try {
-                await _profileService.updateProfile(
-                  phone: phoneController.text,
-                );
-                
-                if (!mounted) return;
-                Navigator.pop(context);
-                _loadProfileData();
-                
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Phone number updated!'),
-                    backgroundColor: Colors.green,
-                  ),
-                );
-              } catch (e) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text(e.toString()),
-                    backgroundColor: Colors.red,
-                  ),
-                );
-              }
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF64B5F6),
-            ),
-            child: const Text('Save'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showEmailDialog() {
-    final emailController = TextEditingController(text: userEmail);
-    final passwordController = TextEditingController();
-    
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Text('Update Email Address'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: emailController,
-              keyboardType: TextInputType.emailAddress,
-              decoration: InputDecoration(
-                labelText: 'New Email',
-                hintText: 'your@email.com',
-                prefixIcon: const Icon(Icons.email, color: Color(0xFF64B5F6)),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              ),
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: passwordController,
-              obscureText: true,
-              decoration: InputDecoration(
-                labelText: 'Current Password',
-                hintText: 'Enter your password to confirm',
-                prefixIcon: const Icon(Icons.lock, color: Color(0xFF64B5F6)),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () async {
-              try {
-                await _profileService.updateEmail(
-                  newEmail: emailController.text,
-                  password: passwordController.text,
-                );
-                
-                if (!mounted) return;
-                Navigator.pop(context);
-                _loadProfileData();
-                
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Email updated! Please verify your new email.'),
-                    backgroundColor: Colors.green,
-                    duration: Duration(seconds: 3),
-                  ),
-                );
-              } catch (e) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text(e.toString()),
-                    backgroundColor: Colors.red,
-                  ),
-                );
-              }
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF64B5F6),
-            ),
-            child: const Text('Update'),
-          ),
-        ],
-      ),
-    );
-  }
-
   void _showChangePasswordDialog() {
     final currentPasswordController = TextEditingController();
     final newPasswordController = TextEditingController();
     final confirmPasswordController = TextEditingController();
+    bool showCurrentPassword = false;
+    bool showNewPassword = false;
+    bool showConfirmPassword = false;
     
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Text('Change Password'),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: currentPasswordController,
-                obscureText: true,
-                decoration: InputDecoration(
-                  labelText: 'Current Password',
-                  prefixIcon: const Icon(Icons.lock_outline, color: Color(0xFF64B5F6)),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 16),
-              TextField(
-                controller: newPasswordController,
-                obscureText: true,
-                decoration: InputDecoration(
-                  labelText: 'New Password',
-                  prefixIcon: const Icon(Icons.lock, color: Color(0xFF64B5F6)),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 16),
-              TextField(
-                controller: confirmPasswordController,
-                obscureText: true,
-                decoration: InputDecoration(
-                  labelText: 'Confirm New Password',
-                  prefixIcon: const Icon(Icons.lock, color: Color(0xFF64B5F6)),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () async {
-              if (newPasswordController.text != confirmPasswordController.text) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Passwords do not match'),
-                    backgroundColor: Colors.red,
-                  ),
-                );
-                return;
-              }
-              
-              if (newPasswordController.text.length < 6) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Password must be at least 6 characters'),
-                    backgroundColor: Colors.red,
-                  ),
-                );
-                return;
-              }
-              
-              try {
-                await _profileService.changePassword(
-                  currentPassword: currentPasswordController.text,
-                  newPassword: newPasswordController.text,
-                );
-                
-                if (!mounted) return;
-                Navigator.pop(context);
-                
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Password changed successfully!'),
-                    backgroundColor: Colors.green,
-                  ),
-                );
-              } catch (e) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text(e.toString()),
-                    backgroundColor: Colors.red,
-                  ),
-                );
-              }
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF64B5F6),
+      builder: (context) => StatefulBuilder(
+        builder: (context, setState) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: const Text(
+            'Change Password',
+            style: TextStyle(
+              fontWeight: FontWeight.bold,
+              fontSize: 22,
             ),
-            child: const Text('Change'),
           ),
-        ],
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: currentPasswordController,
+                  obscureText: !showCurrentPassword,
+                  decoration: InputDecoration(
+                    labelText: 'Current Password',
+                    prefixIcon: const Icon(Icons.lock_outline, color: Color(0xFF64B5F6)),
+                    suffixIcon: IconButton(
+                      icon: Icon(
+                        showCurrentPassword ? Icons.visibility : Icons.visibility_off,
+                      ),
+                      onPressed: () {
+                        setState(() => showCurrentPassword = !showCurrentPassword);
+                      },
+                    ),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: newPasswordController,
+                  obscureText: !showNewPassword,
+                  decoration: InputDecoration(
+                    labelText: 'New Password',
+                    prefixIcon: const Icon(Icons.lock, color: Color(0xFF64B5F6)),
+                    suffixIcon: IconButton(
+                      icon: Icon(
+                        showNewPassword ? Icons.visibility : Icons.visibility_off,
+                      ),
+                      onPressed: () {
+                        setState(() => showNewPassword = !showNewPassword);
+                      },
+                    ),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: confirmPasswordController,
+                  obscureText: !showConfirmPassword,
+                  decoration: InputDecoration(
+                    labelText: 'Confirm New Password',
+                    prefixIcon: const Icon(Icons.lock, color: Color(0xFF64B5F6)),
+                    suffixIcon: IconButton(
+                      icon: Icon(
+                        showConfirmPassword ? Icons.visibility : Icons.visibility_off,
+                      ),
+                      onPressed: () {
+                        setState(() => showConfirmPassword = !showConfirmPassword);
+                      },
+                    ),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                if (newPasswordController.text != confirmPasswordController.text) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Passwords do not match'),
+                      backgroundColor: Colors.red,
+                    ),
+                  );
+                  return;
+                }
+                
+                if (newPasswordController.text.length < 6) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Password must be at least 6 characters'),
+                      backgroundColor: Colors.red,
+                    ),
+                  );
+                  return;
+                }
+                
+                try {
+                  // Re-authenticate user first
+                  final user = _authService.currentUser;
+                  if (user != null && user.email != null) {
+                    final credential = EmailAuthProvider.credential(
+                      email: user.email!,
+                      password: currentPasswordController.text,
+                    );
+                    await user.reauthenticateWithCredential(credential);
+                    await user.updatePassword(newPasswordController.text);
+                  }
+                  
+                  if (!mounted) return;
+                  Navigator.pop(context);
+                  
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Password changed successfully!'),
+                      backgroundColor: Colors.green,
+                    ),
+                  );
+                } catch (e) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('Error: ${e.toString()}'),
+                      backgroundColor: Colors.red,
+                    ),
+                  );
+                }
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF64B5F6),
+              ),
+              child: const Text('Change'),
+            ),
+          ],
+        ),
       ),
     );
-  }
-
-  Future<void> _toggleDarkMode() async {
-    final isDark = await _profileService.isDarkMode();
-    await _profileService.toggleDarkMode(!isDark);
-    
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Dark mode ${!isDark ? 'enabled' : 'disabled'}'),
-          duration: const Duration(seconds: 1),
-        ),
-      );
-    }
   }
 
   void _showLogoutDialog() {
@@ -1022,9 +838,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
       builder: (context) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: const Text('About Nimbus'),
-        content: Column(
+        content: const Column(
           mainAxisSize: MainAxisSize.min,
-          children: const [
+          children: [
             Icon(
               Icons.menu_book_rounded,
               size: 64,
@@ -1052,6 +868,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             onPressed: () => Navigator.pop(context),
             style: ElevatedButton.styleFrom(
               backgroundColor: const Color(0xFF64B5F6),
+              foregroundColor: Colors.white,
             ),
             child: const Text('Close'),
           ),

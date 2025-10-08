@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:nimbus/services/firestore_service.dart';
 
 class BookDetailScreen extends StatefulWidget {
   final Map<String, dynamic> book;
@@ -10,9 +11,28 @@ class BookDetailScreen extends StatefulWidget {
 }
 
 class _BookDetailScreenState extends State<BookDetailScreen> {
+  final FirestoreService _firestoreService = FirestoreService();
   bool _isFavorite = false;
   bool _isInCart = false;
   int _quantity = 1;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkWishlistStatus();
+  }
+
+  Future<void> _checkWishlistStatus() async {
+    final bookId = widget.book['id'] as String?;
+    if (bookId != null) {
+      final isInWishlist = await _firestoreService.isInWishlist(bookId);
+      if (mounted) {
+        setState(() {
+          _isFavorite = isInWishlist;
+        });
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -74,7 +94,7 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
                     const SizedBox(height: 80),
                     // Book Cover
                     Hero(
-                      tag: 'book_${widget.book['title']}',
+                      tag: 'book_${widget.book['id'] ?? widget.book['title']}',
                       child: Container(
                         width: 200,
                         height: 290,
@@ -130,7 +150,7 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
                           ),
                         ),
                         const SizedBox(width: 12),
-                        // Wishlist Button
+                        // Wishlist Button with Firestore
                         Container(
                           decoration: BoxDecoration(
                             color: _isFavorite
@@ -144,10 +164,30 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
                               color: _isFavorite ? Colors.red : Colors.grey[600],
                               size: 28,
                             ),
-                            onPressed: () {
+                            onPressed: () async {
+                              final bookId = widget.book['id'] as String?;
+                              if (bookId == null) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text('Book ID not found'),
+                                    backgroundColor: Colors.red,
+                                  ),
+                                );
+                                return;
+                              }
+
+                              // Toggle wishlist in Firestore
+                              if (_isFavorite) {
+                                await _firestoreService.removeFromWishlist(bookId);
+                              } else {
+                                await _firestoreService.addToWishlist(bookId, widget.book);
+                              }
+
                               setState(() {
                                 _isFavorite = !_isFavorite;
                               });
+
+                              if (!mounted) return;
                               ScaffoldMessenger.of(context).showSnackBar(
                                 SnackBar(
                                   content: Row(
@@ -384,7 +424,7 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              // Price and Quantity
+              // Price (No quantity for ebooks)
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
@@ -400,7 +440,7 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        '\$${widget.book['price'].toStringAsFixed(2)}',
+                        '\$${((widget.book['price'] as num?) ?? 0).toStringAsFixed(2)}',
                         style: const TextStyle(
                           fontSize: 28,
                           fontWeight: FontWeight.bold,
@@ -409,34 +449,31 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
                       ),
                     ],
                   ),
-                  // Quantity Selector
+                  // Digital format badge
                   Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                     decoration: BoxDecoration(
-                      border: Border.all(color: Colors.grey[300]!),
-                      borderRadius: BorderRadius.circular(12),
+                      color: const Color(0xFF64B5F6).withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(
+                        color: const Color(0xFF64B5F6).withOpacity(0.3),
+                      ),
                     ),
                     child: Row(
                       children: [
-                        IconButton(
-                          icon: const Icon(Icons.remove),
-                          onPressed: () {
-                            if (_quantity > 1) {
-                              setState(() => _quantity--);
-                            }
-                          },
+                        const Icon(
+                          Icons.phone_android,
+                          size: 18,
+                          color: Color(0xFF64B5F6),
                         ),
+                        const SizedBox(width: 8),
                         Text(
-                          '$_quantity',
-                          style: const TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
+                          'Digital Copy',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.grey[700],
                           ),
-                        ),
-                        IconButton(
-                          icon: const Icon(Icons.add),
-                          onPressed: () {
-                            setState(() => _quantity++);
-                          },
                         ),
                       ],
                     ),
@@ -449,37 +486,44 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
               // Action Buttons
               Row(
                 children: [
-                  // Add to Cart Button
+                  // Add to Cart Button with Firestore
                   Expanded(
                     flex: 2,
                     child: ElevatedButton.icon(
-                      onPressed: () {
+                      onPressed: () async {
+                        final bookId = widget.book['id'] as String?;
+                        if (bookId == null) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Book ID not found'),
+                              backgroundColor: Colors.red,
+                            ),
+                          );
+                          return;
+                        }
+
+                        // Add to cart in Firestore (quantity always 1 for ebooks)
+                        await _firestoreService.addToCart(bookId, widget.book);
+
                         setState(() {
-                          _isInCart = !_isInCart;
+                          _isInCart = true;
                         });
+
+                        if (!mounted) return;
                         ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
+                          const SnackBar(
                             content: Row(
                               children: [
-                                Icon(
-                                  _isInCart
-                                      ? Icons.shopping_cart
-                                      : Icons.shopping_cart_outlined,
-                                  color: Colors.white,
-                                ),
-                                const SizedBox(width: 12),
-                                Text(
-                                  _isInCart
-                                      ? 'Added to cart ($_quantity item${_quantity > 1 ? 's' : ''})'
-                                      : 'Removed from cart',
-                                ),
+                                Icon(Icons.shopping_cart, color: Colors.white),
+                                SizedBox(width: 12),
+                                Text('Added to cart'),
                               ],
                             ),
-                            backgroundColor: _isInCart ? Colors.green : Colors.grey[700],
-                            duration: const Duration(seconds: 2),
+                            backgroundColor: Colors.green,
+                            duration: Duration(seconds: 2),
                             behavior: SnackBarBehavior.floating,
                             shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(10),
+                              borderRadius: BorderRadius.all(Radius.circular(10)),
                             ),
                           ),
                         );
@@ -685,7 +729,7 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
   }
 
   void _showPurchaseDialog() {
-    final total = widget.book['price'] * _quantity;
+    final price = widget.book['price'] as num;
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -714,11 +758,30 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
               ),
             ),
             const SizedBox(height: 8),
-            Text(
-              'Quantity: $_quantity',
-              style: TextStyle(
-                fontSize: 14,
-                color: Colors.grey[600],
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              decoration: BoxDecoration(
+                color: const Color(0xFF64B5F6).withOpacity(0.1),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: const [
+                  Icon(
+                    Icons.phone_android,
+                    size: 16,
+                    color: Color(0xFF64B5F6),
+                  ),
+                  SizedBox(width: 6),
+                  Text(
+                    'Digital Copy',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Color(0xFF64B5F6),
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
               ),
             ),
             const SizedBox(height: 16),
@@ -739,7 +802,7 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
                     ),
                   ),
                   Text(
-                    '\$${total.toStringAsFixed(2)}',
+                    '\${price.toStringAsFixed(2)}',
                     style: const TextStyle(
                       fontSize: 22,
                       fontWeight: FontWeight.bold,
@@ -760,12 +823,19 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
             ),
           ),
           ElevatedButton(
-            onPressed: () {
+            onPressed: () async {
+              final bookId = widget.book['id'] as String?;
+              if (bookId != null) {
+                // Record purchase in Firestore (quantity always 1)
+                await _firestoreService.recordPurchase([bookId], price.toDouble());
+              }
+
+              if (!mounted) return;
               Navigator.pop(context);
               ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
+                const SnackBar(
                   content: Row(
-                    children: const [
+                    children: [
                       Icon(Icons.check_circle, color: Colors.white),
                       SizedBox(width: 12),
                       Expanded(
@@ -774,10 +844,10 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
                     ],
                   ),
                   backgroundColor: Colors.green,
-                  duration: const Duration(seconds: 3),
+                  duration: Duration(seconds: 3),
                   behavior: SnackBarBehavior.floating,
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10),
+                    borderRadius: BorderRadius.all(Radius.circular(10)),
                   ),
                 ),
               );

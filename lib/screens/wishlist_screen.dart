@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:nimbus/services/firestore_service.dart';
+import 'book_detail_screen.dart';
 
 class WishlistScreen extends StatefulWidget {
   const WishlistScreen({Key? key}) : super(key: key);
@@ -8,62 +10,20 @@ class WishlistScreen extends StatefulWidget {
 }
 
 class _WishlistScreenState extends State<WishlistScreen> {
-  // Sample wishlist items
-  List<Map<String, dynamic>> wishlistItems = [
-    {
-      'id': '1',
-      'title': '1984',
-      'author': 'George Orwell',
-      'price': 10.99,
-      'rating': 4.7,
-      'category': 'Fiction',
-      'image': 'https://via.placeholder.com/150x200/FF6B6B/FFFFFF?text=Book+1',
-    },
-    {
-      'id': '2',
-      'title': 'Sapiens',
-      'author': 'Yuval Noah Harari',
-      'price': 15.99,
-      'rating': 4.9,
-      'category': 'Non-Fiction',
-      'image': 'https://via.placeholder.com/150x200/FFA726/FFFFFF?text=Book+2',
-    },
-    {
-      'id': '3',
-      'title': 'The Lean Startup',
-      'author': 'Eric Ries',
-      'price': 14.99,
-      'rating': 4.6,
-      'category': 'Business',
-      'image': 'https://via.placeholder.com/150x200/AB47BC/FFFFFF?text=Book+3',
-    },
-    {
-      'id': '4',
-      'title': 'Thinking, Fast and Slow',
-      'author': 'Daniel Kahneman',
-      'price': 16.99,
-      'rating': 4.8,
-      'category': 'Psychology',
-      'image': 'https://via.placeholder.com/150x200/64B5F6/FFFFFF?text=Book+4',
-    },
-  ];
+  final FirestoreService _firestoreService = FirestoreService();
 
-  void _removeFromWishlist(int index) {
-    final item = wishlistItems[index];
-    setState(() {
-      wishlistItems.removeAt(index);
-    });
+  void _removeFromWishlist(String bookId, Map<String, dynamic> item) async {
+    await _firestoreService.removeFromWishlist(bookId);
     
+    if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text('${item['title']} removed from wishlist'),
         action: SnackBarAction(
           label: 'UNDO',
           textColor: Colors.white,
-          onPressed: () {
-            setState(() {
-              wishlistItems.insert(index, item);
-            });
+          onPressed: () async {
+            await _firestoreService.addToWishlist(bookId, item);
           },
         ),
         backgroundColor: Colors.red[400],
@@ -74,7 +34,10 @@ class _WishlistScreenState extends State<WishlistScreen> {
     );
   }
 
-  void _addToCart(Map<String, dynamic> item) {
+  void _addToCart(String bookId, Map<String, dynamic> item) async {
+    await _firestoreService.addToCart(bookId, item);
+    
+    if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Row(
@@ -111,10 +74,16 @@ class _WishlistScreenState extends State<WishlistScreen> {
             ),
           ),
           ElevatedButton(
-            onPressed: () {
-              setState(() {
-                wishlistItems.clear();
-              });
+            onPressed: () async {
+              // Get all wishlist items first
+              final wishlistSnapshot = await _firestoreService.streamWishlist().first;
+              
+              // Remove each item
+              for (var item in wishlistSnapshot) {
+                await _firestoreService.removeFromWishlist(item['id'] as String);
+              }
+              
+              if (!mounted) return;
               Navigator.pop(context);
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(
@@ -134,8 +103,8 @@ class _WishlistScreenState extends State<WishlistScreen> {
     );
   }
 
-  void _addAllToCart() {
-    if (wishlistItems.isEmpty) return;
+  void _addAllToCart(List<Map<String, dynamic>> items) {
+    if (items.isEmpty) return;
 
     showDialog(
       context: context,
@@ -145,7 +114,7 @@ class _WishlistScreenState extends State<WishlistScreen> {
           'Add All to Cart',
           style: TextStyle(fontWeight: FontWeight.bold),
         ),
-        content: Text('Add all ${wishlistItems.length} items to your cart?'),
+        content: Text('Add all ${items.length} items to your cart?'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
@@ -155,7 +124,14 @@ class _WishlistScreenState extends State<WishlistScreen> {
             ),
           ),
           ElevatedButton(
-            onPressed: () {
+            onPressed: () async {
+              // Add all items to cart
+              for (var item in items) {
+                final bookId = item['id'] as String;
+                await _firestoreService.addToCart(bookId, item);
+              }
+              
+              if (!mounted) return;
               Navigator.pop(context);
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
@@ -164,7 +140,7 @@ class _WishlistScreenState extends State<WishlistScreen> {
                       const Icon(Icons.check_circle, color: Colors.white),
                       const SizedBox(width: 12),
                       Expanded(
-                        child: Text('${wishlistItems.length} items added to cart'),
+                        child: Text('${items.length} items added to cart'),
                       ),
                     ],
                   ),
@@ -206,45 +182,104 @@ class _WishlistScreenState extends State<WishlistScreen> {
           onPressed: () => Navigator.pop(context),
         ),
         actions: [
-          if (wishlistItems.isNotEmpty)
-            PopupMenuButton<String>(
-              icon: const Icon(Icons.more_vert, color: Color(0xFF2C3E50)),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-              onSelected: (value) {
-                if (value == 'add_all') {
-                  _addAllToCart();
-                } else if (value == 'clear') {
-                  _clearWishlist();
-                }
-              },
-              itemBuilder: (context) => [
-                const PopupMenuItem(
-                  value: 'add_all',
-                  child: Row(
-                    children: [
-                      Icon(Icons.add_shopping_cart, color: Color(0xFF64B5F6)),
-                      SizedBox(width: 12),
-                      Text('Add All to Cart'),
-                    ],
-                  ),
+          StreamBuilder<List<Map<String, dynamic>>>(
+            stream: _firestoreService.streamWishlist(),
+            builder: (context, snapshot) {
+              if (!snapshot.hasData || snapshot.data!.isEmpty) {
+                return const SizedBox.shrink();
+              }
+              
+              return PopupMenuButton<String>(
+                icon: const Icon(Icons.more_vert, color: Color(0xFF2C3E50)),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
                 ),
-                const PopupMenuItem(
-                  value: 'clear',
-                  child: Row(
-                    children: [
-                      Icon(Icons.delete_outline, color: Colors.red),
-                      SizedBox(width: 12),
-                      Text('Clear Wishlist'),
-                    ],
+                onSelected: (value) {
+                  if (value == 'add_all') {
+                    _addAllToCart(snapshot.data!);
+                  } else if (value == 'clear') {
+                    _clearWishlist();
+                  }
+                },
+                itemBuilder: (context) => [
+                  const PopupMenuItem(
+                    value: 'add_all',
+                    child: Row(
+                      children: [
+                        Icon(Icons.add_shopping_cart, color: Color(0xFF64B5F6)),
+                        SizedBox(width: 12),
+                        Text('Add All to Cart'),
+                      ],
+                    ),
                   ),
-                ),
-              ],
-            ),
+                  const PopupMenuItem(
+                    value: 'clear',
+                    child: Row(
+                      children: [
+                        Icon(Icons.delete_outline, color: Colors.red),
+                        SizedBox(width: 12),
+                        Text('Clear Wishlist'),
+                      ],
+                    ),
+                  ),
+                ],
+              );
+            },
+          ),
         ],
       ),
-      body: wishlistItems.isEmpty ? _buildEmptyWishlist() : _buildWishlistGrid(),
+      body: StreamBuilder<List<Map<String, dynamic>>>(
+        stream: _firestoreService.streamWishlist(),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
+
+          if (!snapshot.hasData || snapshot.data!.isEmpty) {
+            return _buildEmptyWishlist();
+          }
+
+          final wishlistItems = snapshot.data!;
+
+          return Column(
+            children: [
+              // Header with count
+              Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Row(
+                  children: [
+                    Text(
+                      '${wishlistItems.length} ${wishlistItems.length == 1 ? 'item' : 'items'}',
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF2C3E50),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              
+              // Grid
+              Expanded(
+                child: GridView.builder(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 2,
+                    childAspectRatio: 0.65,
+                    crossAxisSpacing: 16,
+                    mainAxisSpacing: 16,
+                  ),
+                  itemCount: wishlistItems.length,
+                  itemBuilder: (context, index) {
+                    return _buildWishlistCard(wishlistItems[index]);
+                  },
+                ),
+              ),
+            ],
+          );
+        },
+      ),
     );
   }
 
@@ -294,188 +329,158 @@ class _WishlistScreenState extends State<WishlistScreen> {
     );
   }
 
-  Widget _buildWishlistGrid() {
-    return Column(
-      children: [
-        // Header with count
-        Padding(
-          padding: const EdgeInsets.all(16.0),
-          child: Row(
-            children: [
-              Text(
-                '${wishlistItems.length} ${wishlistItems.length == 1 ? 'item' : 'items'}',
-                style: const TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  color: Color(0xFF2C3E50),
-                ),
-              ),
-            ],
-          ),
-        ),
-        
-        // Grid
-        Expanded(
-          child: GridView.builder(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 2,
-              childAspectRatio: 0.65,
-              crossAxisSpacing: 16,
-              mainAxisSpacing: 16,
-            ),
-            itemCount: wishlistItems.length,
-            itemBuilder: (context, index) {
-              return _buildWishlistCard(index);
-            },
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildWishlistCard(int index) {
-    final item = wishlistItems[index];
+  Widget _buildWishlistCard(Map<String, dynamic> item) {
+    final bookId = item['id'] as String;
     
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 10,
-            offset: const Offset(0, 2),
+    return GestureDetector(
+      onTap: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => BookDetailScreen(book: item),
           ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Book Cover with Heart
-          Expanded(
-            child: Stack(
-              children: [
-                Container(
-                  decoration: BoxDecoration(
-                    borderRadius: const BorderRadius.vertical(
-                      top: Radius.circular(16),
-                    ),
-                    image: DecorationImage(
-                      image: NetworkImage(item['image']),
-                      fit: BoxFit.cover,
-                    ),
-                  ),
-                ),
-                
-                // Heart Button
-                Positioned(
-                  top: 8,
-                  right: 8,
-                  child: Container(
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      shape: BoxShape.circle,
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withOpacity(0.2),
-                          blurRadius: 8,
-                        ),
-                      ],
-                    ),
-                    child: IconButton(
-                      icon: const Icon(
-                        Icons.favorite,
-                        color: Colors.red,
-                        size: 20,
-                      ),
-                      onPressed: () => _removeFromWishlist(index),
-                      padding: const EdgeInsets.all(8),
-                      constraints: const BoxConstraints(),
-                    ),
-                  ),
-                ),
-              ],
+        );
+      },
+      child: Container(
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.05),
+              blurRadius: 10,
+              offset: const Offset(0, 2),
             ),
-          ),
-          
-          // Book Info
-          Padding(
-            padding: const EdgeInsets.all(12.0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  item['title'],
-                  style: const TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 14,
-                    color: Color(0xFF2C3E50),
-                  ),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  item['author'],
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: Colors.grey[600],
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                const SizedBox(height: 8),
-                Row(
-                  children: [
-                    const Icon(
-                      Icons.star,
-                      size: 14,
-                      color: Colors.amber,
-                    ),
-                    const SizedBox(width: 4),
-                    Text(
-                      item['rating'].toString(),
-                      style: const TextStyle(fontSize: 12),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      '\$${item['price'].toStringAsFixed(2)}',
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                        color: Color(0xFF64B5F6),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Book Cover with Heart
+            Expanded(
+              child: Stack(
+                children: [
+                  Container(
+                    decoration: BoxDecoration(
+                      borderRadius: const BorderRadius.vertical(
+                        top: Radius.circular(16),
+                      ),
+                      image: DecorationImage(
+                        image: NetworkImage(item['image'] ?? 'https://via.placeholder.com/150x200'),
+                        fit: BoxFit.cover,
                       ),
                     ),
-                    
-                    // Add to Cart Button
-                    Container(
+                  ),
+                  
+                  // Heart Button
+                  Positioned(
+                    top: 8,
+                    right: 8,
+                    child: Container(
                       decoration: BoxDecoration(
-                        color: const Color(0xFF64B5F6),
-                        borderRadius: BorderRadius.circular(8),
+                        color: Colors.white,
+                        shape: BoxShape.circle,
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.2),
+                            blurRadius: 8,
+                          ),
+                        ],
                       ),
                       child: IconButton(
                         icon: const Icon(
-                          Icons.add_shopping_cart,
-                          size: 18,
-                          color: Colors.white,
+                          Icons.favorite,
+                          color: Colors.red,
+                          size: 20,
                         ),
-                        onPressed: () => _addToCart(item),
-                        padding: const EdgeInsets.all(6),
+                        onPressed: () => _removeFromWishlist(bookId, item),
+                        padding: const EdgeInsets.all(8),
                         constraints: const BoxConstraints(),
                       ),
                     ),
-                  ],
-                ),
-              ],
+                  ),
+                ],
+              ),
             ),
-          ),
-        ],
+            
+            // Book Info
+            Padding(
+              padding: const EdgeInsets.all(12.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    item['title'] ?? 'Unknown',
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 14,
+                      color: Color(0xFF2C3E50),
+                    ),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    item['author'] ?? 'Unknown',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.grey[600],
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      const Icon(
+                        Icons.star,
+                        size: 14,
+                        color: Colors.amber,
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        (item['rating'] ?? 0).toString(),
+                        style: const TextStyle(fontSize: 12),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        '\$${((item['price'] as num?) ?? 0).toStringAsFixed(2)}',
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFF64B5F6),
+                        ),
+                      ),
+                      
+                      // Add to Cart Button
+                      Container(
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF64B5F6),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: IconButton(
+                          icon: const Icon(
+                            Icons.add_shopping_cart,
+                            size: 18,
+                            color: Colors.white,
+                          ),
+                          onPressed: () => _addToCart(bookId, item),
+                          padding: const EdgeInsets.all(6),
+                          constraints: const BoxConstraints(),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

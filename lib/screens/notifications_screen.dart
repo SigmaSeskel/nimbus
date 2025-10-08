@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:nimbus/services/notification_service.dart';
+import 'package:nimbus/services/firebase_notification_service.dart';
 import 'package:nimbus/models/notification_model.dart';
 
 class NotificationsScreen extends StatefulWidget {
@@ -10,7 +10,8 @@ class NotificationsScreen extends StatefulWidget {
 }
 
 class _NotificationsScreenState extends State<NotificationsScreen> {
-  final NotificationService _notificationService = NotificationService();
+  final FirebaseNotificationService _notificationService = 
+      FirebaseNotificationService();
   String _selectedFilter = 'All';
   bool _showUnreadOnly = false;
 
@@ -41,6 +42,35 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
           onPressed: () => Navigator.pop(context),
         ),
         actions: [
+          // Unread count badge
+          StreamBuilder<int>(
+            stream: _notificationService.getUnreadCount(),
+            builder: (context, snapshot) {
+              final unreadCount = snapshot.data ?? 0;
+              if (unreadCount == 0) return const SizedBox.shrink();
+              
+              return Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: Center(
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF64B5F6),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(
+                      '$unreadCount',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
           // Filter toggle
           IconButton(
             icon: Icon(
@@ -193,9 +223,6 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                   notifications = notifications.where((n) => !n.isRead).toList();
                 }
 
-                // Sort by date (newest first)
-                notifications.sort((a, b) => b.timestamp.compareTo(a.timestamp));
-
                 if (notifications.isEmpty) {
                   return _buildEmptyState();
                 }
@@ -271,7 +298,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
             action: SnackBarAction(
               label: 'UNDO',
               onPressed: () {
-                // Could implement undo functionality here
+                // Implement undo if needed
               },
             ),
             behavior: SnackBarBehavior.floating,
@@ -672,24 +699,28 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                   'Order Updates',
                   'Get notified about your orders',
                   Icons.local_shipping_outlined,
+                  'order_updates',
                   true,
                 ),
                 _buildNotificationToggle(
                   'New Books',
                   'Notifications about new arrivals',
                   Icons.auto_stories,
+                  'new_books',
                   true,
                 ),
                 _buildNotificationToggle(
                   'Promotions',
                   'Special offers and deals',
                   Icons.local_offer_outlined,
+                  'promotions',
                   false,
                 ),
                 _buildNotificationToggle(
                   'Account Activity',
                   'Security and account updates',
                   Icons.security,
+                  'account_activity',
                   true,
                 ),
               ],
@@ -704,6 +735,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     String title,
     String subtitle,
     IconData icon,
+    String topic,
     bool initialValue,
   ) {
     return StatefulBuilder(
@@ -753,10 +785,35 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
               Switch(
                 value: value,
                 activeColor: const Color(0xFF64B5F6),
-                onChanged: (newValue) {
+                onChanged: (newValue) async {
                   setState(() {
                     value = newValue;
                   });
+                  
+                  // Subscribe/unsubscribe from Firebase topic
+                  if (newValue) {
+                    await _notificationService.subscribeToTopic(topic);
+                    if (mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('Subscribed to $title'),
+                          duration: const Duration(seconds: 1),
+                          behavior: SnackBarBehavior.floating,
+                        ),
+                      );
+                    }
+                  } else {
+                    await _notificationService.unsubscribeFromTopic(topic);
+                    if (mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('Unsubscribed from $title'),
+                          duration: const Duration(seconds: 1),
+                          behavior: SnackBarBehavior.floating,
+                        ),
+                      );
+                    }
+                  }
                 },
               ),
             ],
